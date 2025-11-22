@@ -1,0 +1,94 @@
+
+#include <Adafruit_GFX.h>         // Core graphics library
+
+#include <Adafruit_ST7735.h>      // Hardware-specific library
+#include <SdFat_Adafruit_Fork.h>  // SD card & FAT filesystem library
+#include <Adafruit_SPIFlash.h>    // SPI / QSPI flash library
+#include <Adafruit_ImageReader.h> // Image-reading functions
+
+#define SD_CS    0 // SD card chip select
+#define TFT_CS   5 // TFT select pin
+#define TFT_DC   2 // TFT data/command pin
+#define TFT_RST  4 // Or set to -1 and connect TFT RST to Arduino reset pin
+int sck = 18;
+int miso = 19;
+int mosi = 23;
+
+SdFat                SD;         // SD card filesystem
+Adafruit_ImageReader reader(SD); // Image-reader object, pass in SD filesys
+Adafruit_ST7735      tft    = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+Adafruit_Image       img;        // An image loaded into RAM
+int32_t              width  = 0, // BMP image dimensions
+                     height = 0;
+
+#define MAX_IMAGES 100
+String images[MAX_IMAGES];
+char filename[25];
+int imageToShow = 0;
+int imageCount = 0;
+
+String filedir = "/resized";
+
+void setup(void) {
+
+  Serial.begin(115200);
+
+  tft.initR(INITR_BLACKTAB);      // Init ST7735S chip, black tab - with big SD card
+  Serial.println(F("TFT initialized."));
+  tft.setRotation(2);
+
+  SPI.begin(sck, miso, mosi, SD_CS);
+  if(!SD.begin(SD_CS, SD_SCK_MHZ(10))) { // Breakouts require 10 MHz limit due to longer wires
+    Serial.println(F("SD begin() failed"));
+    return; // Fatal error, do not continue
+  }
+
+  File rootFolder = SD.open(filedir);
+  File nextFile;
+  String nextFileName;
+
+  for (imageCount = 0; imageCount < MAX_IMAGES; imageCount ++) {
+    images[imageCount] = String("");
+  }
+
+  imageCount = 0;
+  while((nextFile = rootFolder.openNextFile()) && (imageCount < MAX_IMAGES))  {
+    if (!nextFile.isDirectory()) {
+      nextFile.getName(filename, sizeof(filename));
+      Serial.println(filename);
+      String s_filename = filename;
+      if (s_filename.indexOf(".bmp") != -1) {
+        Serial.print(" = ");
+        Serial.println(imageCount);
+        images[imageCount] = String(filename);
+        imageCount ++;
+      }
+    }
+    nextFile.close();
+  }
+  if (nextFile) nextFile.close();
+  rootFolder.close(); 
+
+  tft.fillScreen(ST77XX_BLUE);
+//  reader.drawBMP("/resized/treehugger.bmp", tft, 0, 0);
+
+}
+
+void loop() {
+  Serial.print("Showing image ");
+  Serial.print(imageToShow);
+  Serial.print(" - ");
+  Serial.println(images[imageToShow]);
+  //delay(1000);
+  tft.fillScreen(ST77XX_BLUE);
+  if (images[imageToShow] != "") {
+    String drawImage = filedir + "/" + images[imageToShow];
+    reader.drawBMP(drawImage.c_str(), tft, 0, 0);
+  }
+  delay(5000);
+
+  imageToShow ++;
+  if (imageToShow > imageCount-1){
+    imageToShow = 0;
+  }
+}
